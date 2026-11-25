@@ -1,0 +1,80 @@
+// cmsis_debug:generated - source: debugger/templates/launch.json.in
+// Bu dosya her CMake configure'da yeniden üretilir; değişiklikleri şablonda yapın.
+// Elle yönetmek isterseniz yukarıdaki ilk satırı silin, CMake bu dosyaya bir daha dokunmaz.
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Reset atar, imajı flash'a yazar, tekrar reset atar ve main'in başında durur.
+            "name": "@_dbg_device@ launch (pyOCD)",
+            "type": "gdbtarget",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "@_dbg_elf@",
+            "gdb": "arm-none-eabi-gdb",
+            "definitionPath": "@_dbg_svd@",
+            // İlk komut, GDB'nin pyOCD bellek haritasında olmayan adresleri de okumasını sağlar. DFP'de
+            // harici PSRAM/SDRAM yoktur; bu ayar olmadan oradaki değişkenler Watch'ta
+            // "Cannot access memory" verir. Diğer iki konfigürasyonda da aynı satır var.
+            "initCommands": [
+                "set mem inaccessible-by-default off",
+                "monitor reset halt",
+                "@_dbg_load_cmd@",
+                "monitor reset halt",
+                "break main"
+            ],
+            "target": {
+                "server": "pyocd",
+                "cwd": "${workspaceFolder}",
+                "serverParameters": ["gdbserver", "--no-wait", "--config", "@_dbg_yaml@", "--elf", "@_dbg_elf@"],
+                "serverPortRegExp": "listening on port ([0-9]+)",
+                "portDetectionTimeout": 30000
+            }
+        },
+        {
+            // Çalışan programa dokunmadan bağlanır: yükleme yok, reset yok, çekirdek durmaz.
+            "name": "@_dbg_device@ attach (to-running) (pyOCD)",
+            "type": "gdbtarget",
+            // Bilerek "launch": adapter pyOCD'yi yalnızca launch isteğinde başlatır. "attach" isteği
+            // zaten çalışan bir sunucuya bağlanmaya çalışır ve "serial device" hatasıyla düşer.
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "@_dbg_elf@",
+            "gdb": "arm-none-eabi-gdb",
+            "definitionPath": "@_dbg_svd@",
+            "initCommands": ["set mem inaccessible-by-default off"],
+            "target": {
+                "server": "pyocd",
+                "cwd": "${workspaceFolder}",
+                // connect_mode=attach: pyOCD bağlanırken çekirdeği durdurmaz. Komut satırındaki bu değer
+                // pyocd.yaml'daki CONNECT_MODE'u ezer.
+                "serverParameters": ["gdbserver", "--no-wait", "--config", "@_dbg_yaml@", "--elf", "@_dbg_elf@", "-O", "connect_mode=attach"],
+                "serverPortRegExp": "listening on port ([0-9]+)",
+                "portDetectionTimeout": 30000
+            }
+        },
+        {
+            // Çalışan programa bağlanır ve çekirdeği o an bulunduğu yerde durdurur. Yükleme ve reset yok.
+            "name": "@_dbg_device@ attach (halt) (pyOCD)",
+            "type": "gdbtarget",
+            // Bilerek "launch", yukarıdakiyle aynı sebepten.
+            "request": "launch",
+            // Adapter, breakpoint'leri yerleştirdikten sonra varsayılan olarak programı devam ettirir.
+            // "preserve" bunu engeller; çekirdek durduğu yerde kalır.
+            "run": "preserve",
+            "cwd": "${workspaceFolder}",
+            "program": "@_dbg_elf@",
+            "gdb": "arm-none-eabi-gdb",
+            "definitionPath": "@_dbg_svd@",
+            "initCommands": ["set mem inaccessible-by-default off"],
+            "target": {
+                "server": "pyocd",
+                "cwd": "${workspaceFolder}",
+                // connect_mode=halt: pyOCD bağlanırken reset atmadan çekirdeği durdurur.
+                "serverParameters": ["gdbserver", "--no-wait", "--config", "@_dbg_yaml@", "--elf", "@_dbg_elf@", "-O", "connect_mode=halt"],
+                "serverPortRegExp": "listening on port ([0-9]+)",
+                "portDetectionTimeout": 30000
+            }
+        }
+    ]
+}

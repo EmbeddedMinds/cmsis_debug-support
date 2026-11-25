@@ -1,0 +1,23 @@
+# cmsis_debug:generated - CMake her configure'da yeniden uretir, bu kopyayi degil sablonu duzenleyin.
+# Bu dosyada yalnizca ASCII karakter kullanin: pyOCD dosyayi Windows'un sistem kodlamasiyla okur.
+# Probe ayari yok: pyOCD bagli olan tek probe'u (ST-Link, J-Link, CMSIS-DAP) kendisi bulur.
+target_override: @_dbg_device@
+@_dbg_pack_line@
+user_script: '@_dbg_script@'
+frequency: @_dbg_frequency@
+connect_mode: @_dbg_connect_mode@
+
+# Butun breakpoint'ler donanimsal olsun. Boot kodu imaji RAM'e kopyalarsa yazilimsal breakpoint'ler silinir.
+soft_bkpt_as_hard: true
+# Smart flash: pyOCD once flash'i okuyup imajla karsilastirir, yalnizca degisen sektorleri siler ve yazar.
+# Okumak icin FLM'yi Init(adr, clk, fnc=3) ile cagirir; FLM bu cagrida flash'i memory-mapped moda almalidir.
+smart_flash: @_dbg_smart_flash@
+
+# SWV/ITM printf (SWV_SYSTEM_CLOCK, SWV_CLOCK): pyOCD ITM ve TPIU'yu kendisi ayarlar, ITM port 0'a
+# yazilan metni stdout'a basar; VS Code bunu Debug Console'da gosterir. Ham SWO akisi TCP 3443'te.
+@_dbg_swv_lines@
+
+# Tek bir FLM islemi icin beklenecek sure (saniye). Harici flash'ta sektor silme uzun surebilir.
+flash.timeout.init: 60.0
+flash.timeout.erase_sector: 60.0
+flash.timeout.program: 60.0

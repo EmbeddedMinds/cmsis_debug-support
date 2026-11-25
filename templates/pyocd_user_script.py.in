@@ -1,0 +1,70 @@
+# cmsis_debug:generated - CMake her configure'da yeniden uretir, bu kopyayi degil sablonu duzenleyin.
+# Bu dosyada yalnizca ASCII karakter kullanin: pyOCD dosyayi Windows'un sistem kodlamasiyla okur.
+#
+# pyOCD bu script'i hedefe baglanirken calistirir. Script, DFP'den gelen bellek haritasina sunlari ekler:
+#   - FLM_FILES'taki her FLM icin bir flash bolgesi (adres ve boyut FLM'nin icinden okunur)
+#   - RAM_REGIONS'taki her girdi icin bir RAM bolgesi
+# FlashRegion, RamRegion ve LOG, pyOCD'nin user script ortaminda hazir tanimlidir.
+import os
+
+from pyocd.target.pack.flash_algo import PackFlashAlgo
+
+FLM_FILES = [path for path in r"@_dbg_flm_list@".split(";") if path]
+
+# FLM'lerin calisacagi RAM (FLM_RAM_START / FLM_RAM_SIZE). pyOCD, DFP'deki algoritmalarin RAMstart/RAMsize
+# degerlerini de ayni anahtarlarla verir. Bos kalirsa DFP'nin varsayilan RAM'i kullanilir.
+FLM_RAM = {@_dbg_flm_ram@}
+
+# FLM_PAGE_SIZE: pyOCD sayfa tamponunu ve ProgramPage boyutunu szPage yerine bu degerle ayarlar.
+# Keil ve J-Link de buyuk szPage'i kucuk parcalarla gonderir. 0 ise FLM'deki szPage kullanilir.
+FLM_PAGE_SIZE = @_dbg_flm_page@
+
+# SMART_FLASH: FLM 'Verify' sembolunu disa aciyorsa pyOCD bolgeyi okunamaz sayar ve smart flash'i sessizce
+# kapatir. pyOCD bu sembolu baska hicbir yerde kullanmaz; sembol kaldirilinca okuma Init(fnc=3) ile yapilir.
+SMART_FLASH = @_dbg_smart_flash_py@
+
+# RAM_REGIONS: DFP'de olmayan RAM'ler (harici PSRAM/SDRAM), (baslangic, boyut). Su an istege bagli:
+# launch.json'daki "set mem inaccessible-by-default off" ile GDB haritada olmayan adresleri de okur.
+RAM_REGIONS = [@_dbg_ram_regions@]
+
+
+def will_init_target(target, init_sequence):
+    for path in FLM_FILES:
+        algo = PackFlashAlgo(path)
+        if FLM_PAGE_SIZE:
+            if FLM_PAGE_SIZE > algo.page_size or any(size % FLM_PAGE_SIZE for _, size in algo.sector_sizes):
+                raise ValueError("FLM_PAGE_SIZE (%#x) must be <= szPage (%#x) and divide every sector size: %s"
+                                 % (FLM_PAGE_SIZE, algo.page_size, path))
+            algo.page_size = FLM_PAGE_SIZE
+        if SMART_FLASH:
+            algo.symbols.pop("Verify", None)
+        target.memory_map.add_region(FlashRegion(
+            name=os.path.splitext(os.path.basename(path))[0],
+            start=algo.flash_start,
+            length=algo.flash_size,
+            flm=algo,
+            # pyOCD kendi FLM bolgelerinde de 0 verir: FLM yuklenemezse sector_size ile blocksize
+            # birbirini cagirip sonsuz donguye girmez. FLM yuklenince pyOCD gercek degeri yazar.
+            sector_size=0,
+            is_boot_memory=False,
+            is_external=True,
+            **FLM_RAM))
+
+    for index, (start, length) in enumerate(RAM_REGIONS):
+        if start + length > 1 << 32:
+            raise ValueError("RAM_REGIONS %#x:%#x exceeds the 32-bit address space" % (start, length))
+        # Onceki RAM_REGIONS girdileri de artik haritada oldugu icin birbirleriyle cakisma da yakalanir.
+        overlap = target.memory_map.get_intersecting_regions(start=start, length=length)
+        if overlap:
+            raise ValueError("RAM_REGIONS %#x:%#x overlaps memory map region(s): %s"
+                             % (start, length, ", ".join(str(region.name) for region in overlap)))
+        target.memory_map.add_region(RamRegion(
+            name="RAM_REGION%d" % index,
+            start=start,
+            length=length,
+            # Varsayilan RAM yapilmaz: FLM_RAM verilmezse pyOCD FLM'yi varsayilan RAM'de calistirir,
+            # harici RAM'e ise yazilim baslatana kadar erisilemez.
+            is_default=False,
+            is_powered_on_boot=False,
+            is_testable=False,
+            is_external=True))
